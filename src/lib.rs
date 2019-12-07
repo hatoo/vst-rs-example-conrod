@@ -335,6 +335,10 @@ impl Editor for GUIWrapper {
         }
     }
 
+    fn close(&mut self) {
+        self.inner = None;
+    }
+
     fn open(&mut self, parent: *mut c_void) -> bool {
         self.inner = Some(GUI::new(parent as HWND));
         true
@@ -342,9 +346,5 @@ impl Editor for GUIWrapper {
 
     fn is_open(&mut self) -> bool {
         self.inner.is_some()
-    }
-
-    fn close(&mut self) {
-        self.inner = None;
     }
 }
