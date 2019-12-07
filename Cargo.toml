@@ -8,8 +8,6 @@ edition = "2018"
 
 [dependencies]
 vst = "0.2"
-# vst = "^0.0"
-# vst = { git = "https://github.com/rustaudio/vst-rs" }
 rand = "0.7"
 winit = "0.20.0-alpha4"
 winapi = "0.3"
@@ -18,7 +16,6 @@ glutin = "0.22.0-alpha5"
 conrod_core = "0.68"
 conrod_glium = "0.68"
 conrod_winit = "0.68"
-find_folder = "0.3.0"
 
 [patch.crates-io]
 conrod_winit = { git = "https://github.com/hatoo/conrod.git", branch = "update-glium" }
