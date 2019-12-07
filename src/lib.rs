@@ -2,9 +2,6 @@
 extern crate vst;
 
 #[macro_use]
-extern crate conrod_winit;
-
-#[macro_use]
 extern crate conrod_core;
 
 use rand::random;
@@ -138,7 +135,7 @@ impl Plugin for Whisper {
     }
 
     fn get_editor(&mut self) -> Option<Box<dyn Editor>> {
-        Some(Box::new(GUIWrapper::default()))
+        Some(Box::new(GUIWrapper::new(self.params.clone())))
     }
 }
 
@@ -182,17 +179,8 @@ impl PluginParameters for WhisperParameters {
 }
 
 use winapi::shared::windef::HWND;
-use winit::dpi::LogicalSize;
 use winit::platform::desktop::EventLoopExtDesktop;
 use winit::platform::windows::WindowBuilderExtWindows;
-/*
-use winit::{
-    event::{self, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::Window,
-    window::WindowBuilder,
-};
-*/
 
 mod support;
 
@@ -201,16 +189,18 @@ use conrod_core::{widget, Colorable, Positionable, Ui, Widget};
 use conrod_glium::Renderer;
 use glium::glutin::event_loop::EventLoop;
 use glium::glutin::window::WindowBuilder;
-use glium::glutin::ContextBuilder;
 use glium::Surface;
 use winit::event_loop::ControlFlow;
 
 const WIDTH: u32 = 400;
 const HEIGHT: u32 = 200;
 
-widget_ids!(struct Ids { text });
+widget_ids!(struct Ids { text, volume_slider });
 
-struct GUIWrapper(Option<GUI>);
+struct GUIWrapper {
+    params: Arc<WhisperParameters>,
+    inner: Option<GUI>,
+}
 
 struct GUI {
     event_loop: EventLoop<()>,
@@ -229,13 +219,10 @@ impl GUI {
             .with_title("A fantastic window!")
             .with_decorations(false)
             .with_resizable(false)
-            .with_visible(true)
             .with_parent_window(parent)
             .with_inner_size((WIDTH, HEIGHT).into());
 
         let context = glium::glutin::ContextBuilder::new();
-        // .with_vsync(true)
-        // .with_multisampling(4);
 
         let display = glium::Display::new(window, context, &event_loop).unwrap();
         let display = support::GliumDisplayWinitWrapper(display);
@@ -243,16 +230,10 @@ impl GUI {
         let mut ui = conrod_core::UiBuilder::new([WIDTH as f64, HEIGHT as f64]).build();
         let ids = Ids::new(ui.widget_id_generator());
 
-        /*let assets = find_folder::Search::KidsThenParents(3, 5)
-            .for_folder("assets")
-            .unwrap();
-        let font_path = assets.join("fonts/NotoSans/NotoSans-Regular.ttf");
-        */
         let font: &[u8] = include_bytes!("../assets/fonts/NotoSans/NotoSans-Regular.ttf");
-        // ui.fonts.insert_from_file(font_path).unwrap();
         ui.fonts.insert(Font::from_bytes(font).unwrap());
 
-        let mut renderer = conrod_glium::Renderer::new(&display.0).unwrap();
+        let renderer = conrod_glium::Renderer::new(&display.0).unwrap();
 
         // The image map describing each of our widget->image mappings (in our case, none).
         let image_map = conrod_core::image::Map::<glium::texture::Texture2d>::new();
@@ -268,15 +249,18 @@ impl GUI {
     }
 }
 
-impl Default for GUIWrapper {
-    fn default() -> Self {
-        Self(None)
+impl GUIWrapper {
+    fn new(params: Arc<WhisperParameters>) -> Self {
+        Self {
+            params,
+            inner: None,
+        }
     }
 }
 
 impl Editor for GUIWrapper {
     fn size(&self) -> (i32, i32) {
-        if let Some(inner) = self.0.as_ref() {
+        if let Some(inner) = self.inner.as_ref() {
             let s = inner.display.0.gl_window().window().inner_size();
             (s.width as i32, s.height as i32)
         } else {
@@ -292,13 +276,13 @@ impl Editor for GUIWrapper {
         use winit::event;
 
         let mut end = false;
-        if let Some(inner) = self.0.as_mut() {
+        if let Some(inner) = self.inner.as_mut() {
             let display = &mut inner.display;
-            let event_loop = &mut inner.event_loop;
             let ui = &mut inner.ui;
             let ids = &mut inner.ids;
             let renderer = &mut inner.renderer;
             let image_map = &mut inner.image_map;
+            let params = &self.params;
             inner
                 .event_loop
                 .run_return(move |event, _, control_flow| match event {
@@ -323,11 +307,17 @@ impl Editor for GUIWrapper {
                         let ui = &mut ui.set_widgets();
 
                         // "Hello World!" in the middle of the screen.
-                        widget::Text::new("Hello World!")
+                        widget::Text::new("Volume")
                             .middle_of(ui.window)
                             .color(conrod_core::color::WHITE)
                             .font_size(32)
                             .set(ids.text, ui);
+
+                        if let Some(new_volume) = widget::Slider::new(params.volume.get(), 0.0, 1.0)
+                            .set(ids.volume_slider, ui)
+                        {
+                            params.volume.set(new_volume);
+                        }
 
                         // Draw the `Ui` if it has changed.
                         if let Some(primitives) = ui.draw_if_changed() {
@@ -341,16 +331,20 @@ impl Editor for GUIWrapper {
                 });
         }
         if end {
-            *self = Self::default();
+            self.inner = None;
         }
     }
 
     fn open(&mut self, parent: *mut c_void) -> bool {
-        *self = GUIWrapper(Some(GUI::new(parent as HWND)));
+        self.inner = Some(GUI::new(parent as HWND));
         true
     }
 
     fn is_open(&mut self) -> bool {
-        self.0.is_some()
+        self.inner.is_some()
+    }
+
+    fn close(&mut self) {
+        self.inner = None;
     }
 }
